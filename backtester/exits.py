@@ -14,6 +14,7 @@ assumptions:
     stop is *capped at the trigger price* — you cannot lock in more than the
     move that actually happened on that bar.
   * Funding is charged per 8h funding window held (perp-style).
+  * Market entries pay taker fee + slippage; resting limit entries pay maker.
 
 Within a single bar the order of touches is unknown from OHLC alone, so the
 engine resolves ambiguity pessimistically (stop is assumed to fill before target
@@ -42,7 +43,8 @@ def _first_true(arr):
 def simulate_exit(high, low, close, epoch_s, entry_j, entry, stop, direction,
                   t1, t_final, qty, partial, costs, be_at_r=0.0,
                   be_offset_pct=0.0, be_offset_r=0.0, scan_cap=400, tp_taker=False,
-                  be_intrabar="honest"):
+                  be_intrabar="honest", entry_taker=False,
+                  ignore_entry_bar_tp=False):
     """Simulate a single trade from bar `entry_j` forward.
 
     Returns an ExitResult(net, cost, exit_index, reason, exit_price, events) or None.
@@ -75,10 +77,19 @@ def simulate_exit(high, low, close, epoch_s, entry_j, entry, stop, direction,
         entry_hit_full = H >= entry
         tf_hit = (L <= t_final) if t_final is not None else None
 
+    # A resting limit may have filled after the bar touched its target. With
+    # OHLC alone the order is unknowable, so callers can suppress same-bar TP
+    # while still allowing the protective stop to fire conservatively.
+    if ignore_entry_bar_tp and m:
+        t1_hit[0] = False
+        if tf_hit is not None:
+            tf_hit[0] = False
+
     s0 = _first_true(stop_hit)
     a0 = _first_true(t1_hit)
     realized = 0.0
-    cost = entry * qty * maker
+    entry_fee = (taker + slip) if entry_taker else maker
+    cost = entry * qty * entry_fee
     remaining = 1.0
     took_partial = False
     exit_k = None
@@ -143,6 +154,7 @@ def simulate_exit(high, low, close, epoch_s, entry_j, entry, stop, direction,
             f2 = _first_true(tf_hit[a0:]) if tf_hit is not None else None
             if s2 is not None and (f2 is None or s2 <= f2):
                 exit_k = a0 + s2
+                cost += entry * qty * remaining * (taker + slip)
                 remaining = 0.0
                 reason = "partial_then_stop"
                 exit_price = float(entry)  # remainder closed at breakeven (entry)

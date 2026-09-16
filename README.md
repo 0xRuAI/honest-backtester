@@ -1,5 +1,9 @@
 # backtester — an honest, no-lookahead event-driven backtest framework
 
+[![tests](https://github.com/0xRuAI/honest-backtester/actions/workflows/tests.yml/badge.svg)](https://github.com/0xRuAI/honest-backtester/actions/workflows/tests.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+
 A small Python framework for backtesting price-based trading strategies on OHLCV
 (candlestick) data. It focuses on the thing most backtests get wrong: **realism**.
 No lookahead, honest fill assumptions, explicit costs, and tools to check whether
@@ -19,9 +23,9 @@ stops lock in gains that never happened, and they ignore fees, slippage, and
 funding. Each of these inflates results, and together they can turn a losing
 system into a "winner" on paper.
 
-This framework was extracted from a live crypto trading bot after roughly two
-weeks of hardening specifically aimed at removing those lies. The exit engine is
-the validated core.
+This framework was extracted from a larger crypto research system and reduced
+to a strategy-agnostic execution core. Its assumptions are explicit and covered
+by small regression fixtures so contributors can challenge them directly.
 
 ## Features
 
@@ -46,6 +50,12 @@ the validated core.
     when the close held the lock. Set `be_intrabar="optimistic"` to A/B the
     legacy behaviour.
   - **Funding** charged per 8h window held (perp-style).
+  - **Limit-entry ordering is conservative.** A target on the same OHLC bar as
+    a limit fill is ignored by default because the target may have happened
+    before the order filled. Set `allow_limit_entry_bar_target=True` only to
+    reproduce the legacy optimistic convention.
+  - **Entry costs match order type.** Market entries pay taker fee + slippage;
+    resting limit entries pay maker fee.
   - Within one bar the touch order is unknown from OHLC, so ties are resolved
     **pessimistically** (stop assumed before target).
 - **Pending orders occupy the account (`pending_occupy=True`, default).** A
@@ -72,11 +82,12 @@ the validated core.
 ## Install
 
 ```bash
-pip install -r requirements.txt
+python -m pip install .
 ```
 
-Requires Python 3.9+. `ccxt` is only needed for `download_data.py`; the engine
-itself needs only `pandas` and `numpy`.
+Requires Python 3.9+. Install optional download and chart support with
+`python -m pip install ".[all]"`. Contributors can use
+`python -m pip install -e ".[dev]"` and `python -m pytest`.
 
 ## Bundled data
 
@@ -98,6 +109,7 @@ python download_data.py --symbols BTC/USDT:USDT,ETH/USDT:USDT --timeframes 1h,15
 
 Klines are public market data; they are included here only to make the examples
 reproducible. Re-download from your own venue if you need authoritative bars.
+See [DATA.md](DATA.md) for the provenance boundary and a reproducible command.
 
 ## Local cache (why repeated backtests are fast)
 
@@ -263,7 +275,8 @@ assumptions.** Be clear-eyed about both sides.
   the single most common source of fake alpha.
 - **Fills are pessimistic, not optimistic.** Stops pay taker+slippage; same-bar
   stop/target ties resolve as stops; breakeven can't lock in phantom gains;
-  there's a `tp_taker` mode for a true worst-case take-profit assumption.
+  limit-entry bars cannot claim an unsequenced target by default; and there's a
+  `tp_taker` mode for a true worst-case take-profit assumption.
 - **Costs are explicit and stressable.** Fees, slippage and funding are all
   charged, and `cost_mult` lets you re-run everything at, say, 1.5x cost to see
   how much of the edge is fragile to execution quality.
@@ -278,10 +291,10 @@ assumptions.** Be clear-eyed about both sides.
   the low came first; the engine assumes the pessimistic order, but this is still
   an approximation, not tick truth. For very tight stops/targets relative to bar
   range, use finer timeframes or tick data if you need more precision.
-- **Limit-entry fills are idealized.** A `"limit"` entry is assumed to fill if
-  price merely *touches* the entry level. Real resting orders can be skipped in
-  fast moves (queue position, gaps). This is *optimistic* for limit entries —
-  prefer `"market"` entries, or treat limit-fill results as an upper bound.
+- **Limit-entry fills are still modeled.** `fill_eps` can require penetration
+  beyond the quote and `entry_depth` can move the quote deeper, but neither is
+  a real queue model. Sweep these assumptions, prefer finer data, and treat
+  touch-only results as optimistic.
 - **No order book / partial fills / market impact / latency.** Fills are at your
   requested price (plus modeled slippage). Large size, thin books, and execution
   delay are not simulated.
@@ -316,3 +329,6 @@ decisions.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Please report
+security issues using [SECURITY.md](SECURITY.md), not a public issue.

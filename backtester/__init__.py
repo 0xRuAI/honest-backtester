@@ -9,4 +9,4 @@ from .strategy import Strategy, Signal
 from .engine import Trade, BacktestConfig, run_backtest
 
 __all__ = ["Strategy", "Signal", "Trade", "BacktestConfig", "run_backtest"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

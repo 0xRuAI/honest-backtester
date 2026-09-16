@@ -1,0 +1,41 @@
+name: Execution or accounting bug
+description: Report a reproducible fill-order, cost, sizing, or metric problem
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove credentials and private account data before posting.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Minimal OHLCV and signal fixture
+      description: Include the smallest bars, signal, and config that reproduce the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected fill sequence and accounting
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: dropdown
+    id: data
+    attributes:
+      label: Data safety check
+      options:
+        - I confirmed this report contains no credentials or private account data.
+    validations:
+      required: true

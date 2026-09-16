@@ -61,6 +61,10 @@ class BacktestConfig:
     scan_cap: int = 400              # max bars to hold before mark-to-market
     be_intrabar: str = "honest"       # BE trigger-bar rule: "honest" (close-rule lock-out, default) / "optimistic" (legacy A/B)
     pending_occupy: bool = True       # unfilled limit order occupies the serial account until it expires (mirrors a live bot)
+    allow_limit_entry_bar_target: bool = False
+    # A limit order can fill after the bar has already touched its target. OHLC
+    # cannot reveal that ordering, so the conservative default forbids a target
+    # fill on the limit-entry bar. Stops remain eligible on that bar.
     # Entry-fill realism (post-only queue physics). A resting maker order is NOT
     # guaranteed a fill when price merely touches its level: it fills when price
     # trades *through* it (queue priority). Touch=fill backtests systematically
@@ -100,7 +104,7 @@ def run_backtest(df, strategy, cfg: BacktestConfig = None):
 
     for sig in signals:
         i = sig.index
-        if i < 1 or i <= busy_until or i + 1 >= n:
+        if i < 0 or i <= busy_until or i + 1 >= n:
             continue
         d = sig.direction
         if d not in ("long", "short"):
@@ -133,7 +137,7 @@ def run_backtest(df, strategy, cfg: BacktestConfig = None):
             continue  # stop on the wrong side
 
         targets = list(sig.targets) if sig.targets else []
-        if not targets:
+        if not targets or not (0 < sig.partial <= 1):
             continue
         t1 = targets[0]
         t_final = targets[-1]
@@ -154,7 +158,12 @@ def run_backtest(df, strategy, cfg: BacktestConfig = None):
                             t1, t_final, qty, sig.partial, costs,
                             be_at_r=cfg.be_at_r, be_offset_pct=cfg.be_offset_pct,
                             be_offset_r=cfg.be_offset_r, scan_cap=cfg.scan_cap,
-                            tp_taker=cfg.tp_taker, be_intrabar=cfg.be_intrabar)
+                            tp_taker=cfg.tp_taker, be_intrabar=cfg.be_intrabar,
+                            entry_taker=(sig.entry_mode == "market"),
+                            ignore_entry_bar_tp=(
+                                sig.entry_mode == "limit"
+                                and not cfg.allow_limit_entry_bar_target
+                            ))
         if res is None:
             continue
         net, cost, exit_idx, reason = res.net, res.cost, res.exit_index, res.reason
@@ -167,6 +176,8 @@ def run_backtest(df, strategy, cfg: BacktestConfig = None):
         curve.append((exit_idx, round(equity, 2)))
         meta = dict(sig.meta)
         meta["events"] = res.events          # every action taken (for plotting/verification)
+        meta["cost"] = round(float(cost), 8)
+        meta["entry_mode"] = sig.entry_mode
         trades.append(Trade(entry_j, d, entry, stop, t_final, exit_idx,
                             res.exit_price, r_val, round(net, 2), reason, meta))
 
